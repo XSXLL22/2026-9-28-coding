@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "rule_version": "simulation-fusion-1",
+  "simulation_only": true,
+  "scope": "full_frame_simulation",
+  "node_id": "offline-node-01",
+  "session_id": "simulation-session-01",
+  "clock_id": "simulation-clock-01",
+  "max_age_ms": 1500,
+  "max_gap_ms": 1000,
+  "alignment_ms": 500,
+  "attention_ms": 500,
+  "warning_ms": 1500,
+  "alarm_ms": 1000,
+  "recovery_ms": 3000,
+  "thresholds": {
+    "visual_clear": 0.15,
+    "visual_weak": 0.25,
+    "smoke_warning": 0.6,
+    "fire_strong": 0.8,
+    "temperature_clear": 40.0,
+    "temperature_attention": 45.0,
+    "temperature_warning": 60.0
+  }
+}

@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.cache/
+Ultralytics/
+
+# ---------------------------------------------------------------------------
+# Models and datasets are deliberately NOT part of this repository.
+#
+# The published code expects the dataset under datasets/ and the trained
+# weights under models/; both are supplied locally. Nothing below is needed
+# in order to read or review the code.
+# ---------------------------------------------------------------------------
+models/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.ckpt
+
+datasets/*
+!datasets/README.md
+
+# ---------------------------------------------------------------------------
+# Experiment outputs.
+#
+# The written briefings (experiments/*.md) are tracked because they are the
+# record of what was actually measured. The per-run directories hold weights,
+# images, logs and generated vectors, so they stay out of version control.
+# ---------------------------------------------------------------------------
+experiments/*/
+runs/
+
+# ---------------------------------------------------------------------------
+# FPGA / Verilog build and simulation output
+#
+# Note: *.bin is deliberately NOT excluded. tests/golden/**/*.bin are the
+# frozen golden-vector fixtures the unit test suite runs against, so a blanket
+# *.bin rule would silently break `python -m unittest discover -s tests`.
+# ---------------------------------------------------------------------------
+*.vvp
+*.vcd
+*.fst
+*.out
+*.jou
+*.str
+*.wdb
+*.bit
+*.dcp
+*.runs/
+*.gen/
+*.hw/
+*.ip_user_files/
+
+# ---------------------------------------------------------------------------
+# Editors and operating system
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+*.swp
+*~

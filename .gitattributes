@@ -1,0 +1,22 @@
+# Normalize text files to LF inside the repository, so a clone is identical
+# no matter which platform performs it.
+* text=auto eol=lf
+
+# Frozen fixtures and RTL vector memories must survive a clone byte-for-byte:
+# the test suite and the RTL runner compare them with exact byte equality, so
+# any line-ending rewrite would show up as a failure. Rules later in this file
+# win, hence the specific entries come after the catch-all above.
+*.bin   -text -diff
+*.mem   -text -diff
+*.png   -text -diff
+*.jpg   -text -diff
+*.jpeg  -text -diff
+*.pt    -text -diff
+
+# Verilog, Python and docs are plain text and are normalized above.
+*.v     text eol=lf
+*.py    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "node_id": "offline-node-01",
+  "roi": {
+    "status": "example_not_site_calibrated",
+    "coordinate_system": "normalized_original_image",
+    "polygon": [[0.15, 0.2], [0.85, 0.2], [0.85, 0.9], [0.15, 0.9]]
+  },
+  "model_class_map": {"Smoke": "smoke", "Fire": "fire"},
+  "class_status": {"smoke": "pending_training", "fire": "pending_training", "leaf_pile": "no_training_data"}
+}

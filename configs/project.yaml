@@ -1,0 +1,59 @@
+schema_version: 1
+project:
+  id: campus_fire_multisensor
+  name: 基于FPGA与轻量化YOLO的校园火险多源感知预警系统
+  deployment_scope: single_camera_single_electrical_facility_roi
+
+vision:
+  classes:
+    - id: 0
+      name: smoke
+      display_name: 烟雾
+    - id: 1
+      name: fire
+      display_name: 明火
+    - id: 2
+      name: leaf_pile
+      display_name: 落叶堆积
+  primary_input_size: [128, 128]
+  comparison_input_size: [96, 96]
+  annotation_format: yolo_normalized_xywh
+  color_order: RGB
+  roi_policy: configured_polygon
+
+risk:
+  levels:
+    - NORMAL
+    - ATTENTION
+    - WARNING
+    - ALARM
+  missing_data_is_normal: false
+  thresholds_status: pending_calibration
+  rule_version: draft-1
+
+quantization:
+  initial_contract: W8A8
+  weights: signed_int8_per_output_channel_symmetric
+  activations: signed_int8_per_tensor_symmetric
+  accumulator: signed_int32
+  zero_point: 0
+  status: design_target_not_validated
+
+dataset:
+  split_unit: group_id
+  split_policy: location_video_date_grouped
+  train_ratio_target: 0.70
+  val_ratio_target: 0.15
+  test_ratio_target: 0.15
+  manifest: datasets/manifest.csv
+  classes_file: datasets/classes.txt
+  processed_root: datasets/processed
+
+hardware:
+  architecture: zynq_ps_pl_candidate
+  candidate_devices:
+    - xc7z010
+    - xc7z020
+  selected_board: null
+  selected_device: null
+  status: not_purchased

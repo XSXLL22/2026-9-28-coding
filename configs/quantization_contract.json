@@ -1,0 +1,123 @@
+{
+  "contract_version": "p4-contract-1.3",
+  "frozen_utc_date": "2026-09-28",
+  "amendment_history": [
+    {
+      "version": "p4-contract-1",
+      "date": "2026-09-28",
+      "note": "Initial freeze before any pack or golden vector existed."
+    },
+    {
+      "version": "p4-contract-1.1",
+      "date": "2026-09-28",
+      "note": "Corrections found during the P4.1 structure audit of the real checkpoint, before any pack/vector generation: (1) BN fold bias formula fixed to b_fold = beta + (b0 - running_mean) * gamma / sqrt(var + eps); (2) integer scope end moved to the detect-head raw branch outputs (the six cv2/cv3 final conv tensors) because Ultralytics applies softmax BEFORE the fixed DFL conv, so DFL conv, softmax and decode are PS_FLOAT; (3) elementwise add added to PS_INT with its requant rule; concat requant rule, scale-preserving split/upsample/maxpool, and the round-half-up weight rounding rule made explicit."
+    },
+    {
+      "version": "p4-contract-1.2",
+      "date": "2026-09-28",
+      "note": "Found by the P4.1 float verification (fold/trace vs original framework, worst diff 0.134 concentrated at the first SPPF max-pool): max-pool border padding uses standard -inf semantics (padded positions never win the max), NOT zero padding. The C reference and future RTL must ignore padded positions when taking the max."
+    },
+    {
+      "version": "p4-contract-1.3",
+      "date": "2026-09-28",
+      "note": "E1 numeric-domain corrections, no change to any emitted pack value: (1) accumulation bound rewritten per output channel B[o] = |qb[o]| + 128*sum(|qw[o]|) -- max_abs_input is 128 because activations span [-128,127]; the previous product form with 127 and an int8 abs() that silently overflows on -128 was unsound; (2) the bound check itself now raises instead of relying on a call-site comment; (3) multiplier normalization: n in [0, 62], negative n (scale ratio >= 2^30) and absurdly small scales are explicitly rejected; n = 0 (y = t) is legal; (4) requantization intermediate width proof: |acc*M + half| <= (2^31-1)^2 + 2^61 < 2^63, computed with exact integers in the build."
+    }
+  ],
+  "status": "frozen_for_p4",
+  "authority": [
+    "docs/实现架构.md#5-定点规格与-fpga-数据通路",
+    "docs/P4量化与整数参考计划.md",
+    "docs/定点格式说明.md"
+  ],
+  "scope": {
+    "integer_covered": "Input quantization through the six detect-head raw branch outputs (the final 1x1 conv of cv2 and cv3 per scale). The Ultralytics DFL module applies softmax BEFORE its fixed 1x1 conv, so the DFL conv, softmax, decode, sigmoid and NMS are all PS_FLOAT and outside bit-exact guarantees.",
+    "target_model": "experiments/p2_expanded_train/fit/weights/best.pt (SHA256 c93676b32022f09296527641c999c535e8a2ad51de9a1881beddb8fb0e4ff408), input 128; the exporter is layer-descriptor driven, not YOLOv8n-specific.",
+    "not_covered": [
+      "R1/new-seed 320 candidates (software diagnostic, not quantized)",
+      "student-model training",
+      "FPGA RTL behaviour (P5 compares against this contract)"
+    ]
+  },
+  "tensor_formats": {
+    "channel_order": "RGB input channel order as produced by the frozen letterbox preprocessing; the exporter records the chain from original image to network input including letterbox parameters.",
+    "input_quantization": {
+      "rule": "x_float = pixel/255.0 in [0,1]; q = round_half_up(x_float * 127); stored as int8 values 0..127; sx = 1/127; zero_point = 0",
+      "note": "Symmetric zero-point-0 on a non-negative signal uses half the int8 range by design; documented tradeoff, not an oversight."
+    },
+    "activation_layout": "NHWC in main memory; logical sizes recorded per layer, tail channels zero-padded to the hardware granularity when required (padding value 0).",
+    "weight_layout": "OIHW, per-output-channel int8, zero_point 0.",
+    "bias": "int32; qb[o] = round_half_up(b_folded[o] / (sx * sw[o])); scale of qb is exactly sx * sw[o]."
+  },
+  "weight_quantization": {
+    "type": "per_output_channel_symmetric_int8",
+    "zero_point": 0,
+    "scale_rule": "sw[o] = max(|w[o]|) / 127 over the folded float weight row; a channel of all zeros gets sw[o]=1e-12 and qw all zeros",
+    "order": "Conv+BN are folded in float32 BEFORE weight quantization; folding uses the framework's eval-mode running_mean/var/weight/bias with eps as trained: w_fold = w * gamma / sqrt(var + eps), b_fold = beta + (b0 - running_mean) * gamma / sqrt(var + eps) for a Conv-BN(-no-activation) pair. Weight rounding is round_half_up (floor(x+0.5)) applied to w/sw[o], consistent with the requantization rule."
+  },
+  "activation_quantization": {
+    "type": "per_layer_tensor_symmetric_int8",
+    "zero_point": 0,
+    "scale_rule": "sx = clip_abs / 127 where clip_abs comes from the frozen calibration histogram; per-layer rule used (max_abs or percentile_abs) and clip value are recorded in the model pack; contract fixes the two allowed rules and their computation, not the values.",
+    "calibration_data": "frozen 64-image subset of the 394-image train split; the 109-image development set is never used to set scales."
+  },
+  "requantization": {
+    "definition": "real output scale r = sx * sw[o] / sy is approximated by multiplier M and shift n with M = round_half_up(r * 2^n) constrained to [2^30, 2^31).",
+    "integer_path": "t = (acc_int32 + qb_int32) * M computed in int64; y = right_shift_round_half_up(t, n); output = saturate_int8(y); activation applied after saturation.",
+    "rounding_rule": "round-half-up: y = (t + (1 << (n-1))) >> n using arithmetic right shift for all signs, including negative t; n >= 1 assumed (n == 0 uses y = t). Worked examples live in docs/定点格式说明.md.",
+    "accumulation_bound": "Per output channel: B[o] = |qb[o]| + 128 * sum(|qw[o,:]|) using max_abs_input = 128 (activations span [-128,127]; the first layer is [0,127] and shares the conservative bound). B[o] must fit int32; the pack builder raises otherwise. Weights are widened to int64 before abs(): np.abs on an int8 -128 overflows silently back to -128.",
+    "weight_rounding": "qw[o] = saturate_int8(round_half_up(w_fold[o] / sw[o])); the maximum-magnitude weight maps exactly to +/-127.",
+    "intermediate_width": "|acc| <= 2^31-1 and |M| <= 2^31-1 give |acc*M| <= (2^31-1)^2; adding half <= 2^61 stays below 2^63, so int64 intermediates are proven sufficient (exact-integer check performed at pack build). shift n is restricted to [0, 62]; n = 0 means y = t."
+  },
+  "activations_integer_defs": {
+    "relu": "y = max(0, q) on the requantized int8 value; exact.",
+    "silu_lut": "256-entry table per consuming layer: out = quantize(silu_fp(v * sy), sy) for each int8 v; runtime is table lookup only, no arithmetic; tables stored in the model pack and regenerated deterministically from the contract.",
+    "maxpool_5x5_s1_p2": "integer max with standard -inf border padding: padded positions are never candidates for the max; zero padding would corrupt all-negative border windows. SPPF uses three chained 5x5 max-pools, stride 1, padding 2.",
+    "upsample_nearest_2x": "index replication, no arithmetic.",
+    "add": "Elementwise int8 add: output scale equals the FIRST operand's scale; the second operand is requantized into it with the same multiplier/shift machinery before adding; result saturates to int8. The first operand must be the tensor that continues through the graph (in C2f residuals: the pass-through chunk).",
+    "concat": "Output scale is a calibration artifact of the concatenated float tensor; EVERY input tensor is requantized into the output scale with the multiplier/shift machinery before readdressing.",
+    "scale_preserving": "split/chunk, upsample_nearest and maxpool keep the input scale exactly; no requantization is inserted on their inputs or outputs."
+  },
+  "op_partition_classes": {
+    "PL_V1": [
+      "conv3x3_s1",
+      "conv3x3_s2",
+      "conv1x1_s1",
+      "relu",
+      "requantize"
+    ],
+    "PS_INT": [
+      "silu_lut",
+      "add",
+      "maxpool_5x5",
+      "upsample_nearest_2x",
+      "concat",
+      "split_chunk"
+    ],
+    "PS_FLOAT": [
+      "dfl_fixed_conv",
+      "softmax",
+      "dfl_decode_expectation",
+      "sigmoid",
+      "box_decode",
+      "nms",
+      "coordinate_restore"
+    ],
+    "audit_requirement": "The exporter must assign every module of the network to exactly one class; the student-model decision list (currently: SiLU -> ReLU replacement) is part of the export report."
+  },
+  "model_pack_manifest": {
+    "required_fields": [
+      "model_id",
+      "contract_version",
+      "format_version",
+      "layer_descriptors",
+      "weights_int8",
+      "quant_tables",
+      "silu_luts",
+      "accumulation_checks",
+      "checksums",
+      "golden_vector_manifest"
+    ],
+    "stability": "Same inputs and contract must regenerate a byte-identical pack; the exporter writes its own source hash."
+  },
+  "change_control": "Any rule change bumps contract_version and requires regenerating model packs and golden vectors; old packs stay valid for their recorded version. Frozen on 2026-09-28 before any P4 execution."
+}
